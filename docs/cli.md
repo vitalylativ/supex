@@ -61,3 +61,5 @@ Runtime export currently supports:
 ./supex screenshot --width 2560 --height 1440
 ./supex export obj
 ```
+
+`./supex status` exits nonzero when SketchUp is disconnected, which makes it suitable for scripts and agent readiness checks.

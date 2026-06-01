@@ -44,6 +44,13 @@ begin
     end
 
     load main_extension_file
+
+    runtime_main_file = File.join(__dir__, 'supex_runtime', 'main.rb')
+    if File.exist?(runtime_main_file) && !defined?(SupexRuntime::Main)
+      puts "Supex: Loading runtime main from '#{runtime_main_file}'" if verbose
+      require runtime_main_file
+    end
+
     puts 'Supex: Extension loaded successfully'
   else
     puts "Supex: ERROR - Extension file not found at '#{main_extension_file}'"

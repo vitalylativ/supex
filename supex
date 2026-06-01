@@ -4,7 +4,7 @@
 # Logs stdout to cli-stdout.log
 # Logs stderr to cli-stderr.log
 
-set -e
+set -euo pipefail
 
 # Resolve symlinks to find real script location
 SCRIPT_PATH="${BASH_SOURCE[0]}"
@@ -15,8 +15,8 @@ while [ -L "$SCRIPT_PATH" ]; do
   [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
 done
 SUPEX_ROOT="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-# Fallback to ~/.supex/tmp-workspace for ad-hoc CLI usage (not pwd to avoid pollution)
-export SUPEX_WORKSPACE="${SUPEX_WORKSPACE:-$HOME/.supex/tmp-workspace}"
+# Match the launcher and MCP wrapper so CLI follow-up commands use the current project by default.
+export SUPEX_WORKSPACE="${SUPEX_WORKSPACE:-$(pwd)}"
 
 LOG_DIR="${SUPEX_LOG_DIR:-$SUPEX_WORKSPACE/.tmp/logs}"
 mkdir -p "$LOG_DIR"
@@ -29,7 +29,8 @@ if [ -t 1 ]; then
   export FORCE_COLOR=1
 fi
 
-# Run supex CLI with logging
-# Use process substitution to tee stderr (show in terminal AND log to file)
+# Run supex CLI with logging.
+# pipefail keeps command failures visible even though stdout is piped through tee.
+# Use process substitution to tee stderr (show in terminal AND log to file).
 uv run --project "$SUPEX_ROOT/driver" supex "$@" 2> >(tee -a "$STDERR_LOG" >&2) | \
   tee -a "$STDOUT_LOG"

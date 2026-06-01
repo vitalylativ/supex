@@ -17,7 +17,7 @@ Path policy is a guardrail, not a sandbox. Arbitrary Ruby execution can bypass i
 
 Workspace defaults differ by entrypoint script:
 
-- `./supex`: `SUPEX_WORKSPACE=${SUPEX_WORKSPACE:-$HOME/.supex/tmp-workspace}`
+- `./supex`: `SUPEX_WORKSPACE=${SUPEX_WORKSPACE:-$(pwd)}`
 - `./mcp`: `SUPEX_WORKSPACE=${SUPEX_WORKSPACE:-$(pwd)}`
 - `./vcad-sidecar`: `SUPEX_WORKSPACE=${SUPEX_WORKSPACE:-$(pwd)}`
 
@@ -39,6 +39,16 @@ Workspace defaults differ by entrypoint script:
 | `SUPEX_RESPONSE_DELAY` | `0` | Artificial response delay (seconds) |
 | `SUPEX_PLAIN` | (unset) | Force plain-text CLI output when set to `1` |
 | `SUPEX_COLOR` | (unset) | Force rich/color CLI output when set to `1` |
+
+## Launch Wrapper
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUPEX_SKETCHUP_APP` | `SketchUp` | App name or `.app` path passed to `open -a` |
+| `SUPEX_SKETCHUP_PROCESS` | `SketchUp` | Process name used by launcher readiness checks |
+| `SUPEX_SKETCHUP_TEMPLATE` | `tests/data/template.skp` | Template copied to `.tmp/sketchup-startup.skp` when no model is provided; set empty to disable |
+| `SUPEX_LAUNCH_PROCESS_TIMEOUT` | `30` | Seconds `scripts/launch-sketchup.sh` waits for the SketchUp process to appear |
+| `SUPEX_LAUNCH_READY_TIMEOUT` | `60` | Seconds `scripts/launch-sketchup.sh` waits for `./supex status` to succeed |
 
 ## REPL
 

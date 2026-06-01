@@ -201,6 +201,13 @@ From repository root:
 ```
 
 This uses Ruby injection to load sources directly from development directory.
+When no model is provided, the launcher opens a temporary copy of the tracked startup template so automation does not stop at SketchUp's welcome screen.
+
+For agent-driven launches that should return after the Supex runtime is ready:
+
+```bash
+bash ./scripts/launch-sketchup.sh --detach
+```
 
 ### Live Reload
 

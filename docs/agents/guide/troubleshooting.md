@@ -14,10 +14,22 @@ Common issues and solutions when using Supex.
 3. Bridge server did not start
 
 **Solutions**:
-1. Launch SketchUp with `./scripts/launch-sketchup.sh`
-2. Check Ruby Console in SketchUp for extension errors
-3. Verify server started: look for "Bridge server started and listening" in SketchUp console
-4. Check if `SUPEX_NO_AUTOSTART=1` is set (disables automatic server start)
+1. For agents, launch SketchUp with `bash ./scripts/launch-sketchup.sh --detach` from the Supex repository. The command returns only after `./supex status` succeeds.
+2. For manual terminal sessions, launch SketchUp with `./scripts/launch-sketchup.sh`
+3. Check Ruby Console in SketchUp for extension errors
+4. Verify server started: look for "Bridge server started and listening" in SketchUp console
+5. Check if `SUPEX_NO_AUTOSTART=1` is set (disables automatic server start)
+
+### SketchUp Does Not Start
+
+**Symptom**: `SketchUp failed to start within 30 seconds`
+
+**Solutions**:
+1. Confirm macOS can resolve the app: `osascript -e 'id of app "SketchUp"'`
+2. If SketchUp is installed under a versioned path, set `SUPEX_SKETCHUP_APP`, for example `SUPEX_SKETCHUP_APP='/Applications/SketchUp 2026/SketchUp.app' bash ./scripts/launch-sketchup.sh --detach`
+3. If the process name differs, set `SUPEX_SKETCHUP_PROCESS`
+4. For slow startup, increase `SUPEX_LAUNCH_PROCESS_TIMEOUT`
+5. If startup lands on the welcome screen, provide a model path or leave the default startup template enabled
 
 ### Port Already in Use
 
@@ -264,6 +276,8 @@ Check connection status:
 ```bash
 ./supex status
 ```
+
+`./supex status` exits nonzero when SketchUp is disconnected, so agents can use it as a retry/readiness signal.
 
 Get detailed model information:
 ```bash

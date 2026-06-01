@@ -98,11 +98,19 @@ The development launcher handles extension deployment automatically:
 ./scripts/launch-sketchup.sh path/to/your/model.skp
 ```
 
+For automation or agent sessions that need the launch command to return once the runtime is ready:
+
+```bash
+bash ./scripts/launch-sketchup.sh --detach path/to/your/model.skp
+```
+
 This script:
 - Launches the installed SketchUp app
 - Deploys Ruby extension sources directly (no .rbz building required)
 - Enables live reloading during development
 - Optionally opens a model given as parameter  
+- Opens a temporary copy of the startup template when no model is given, so automated launches avoid the welcome screen
+- In `--detach` mode, waits for `./supex status` to succeed before exiting
 
 ### 3. Configure Claude Code
 
