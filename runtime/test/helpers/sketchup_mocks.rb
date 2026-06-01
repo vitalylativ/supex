@@ -108,6 +108,18 @@ class MockBounds
       ((@max.z - @min.z)**2)
     )
   end
+
+  def width
+    @max.x - @min.x
+  end
+
+  def depth
+    @max.y - @min.y
+  end
+
+  def height
+    @max.z - @min.z
+  end
 end
 
 class MockColor
@@ -123,20 +135,41 @@ end
 # Mock SketchUp entity classes
 module Sketchup
   class Entity
-    attr_accessor :entityID, :layer, :valid
+    attr_accessor :entityID, :layer, :valid, :material
 
     def initialize(id: rand(10_000))
       @entityID = id
       @layer = MockLayer.new
       @valid = true
+      @material = nil
+      @attributes = {}
     end
 
     def typename
       self.class.name.split('::').last
     end
 
+    def persistent_id
+      @entityID + 100_000
+    end
+
     def valid?
       @valid
+    end
+
+    def set_attribute(dict, key, value)
+      @attributes[dict] ||= {}
+      @attributes[dict][key] = value
+    end
+
+    def get_attribute(dict, key, default = nil)
+      @attributes.dig(dict, key) || default
+    end
+
+    def attribute_dictionaries
+      return nil if @attributes.empty?
+
+      @attributes.map { |name, values| MockAttributeDictionary.new(name, values) }
     end
   end
 
@@ -170,17 +203,18 @@ module Sketchup
   end
 
   class Group < Entity
-    attr_accessor :name, :bounds, :parent
+    attr_accessor :name, :bounds, :parent, :entities
 
     def initialize(id: rand(10_000), name: '', parent: nil)
       super(id: id)
       @name = name
       @bounds = MockBounds.new
       @parent = parent  # Can be Model.entities or ComponentDefinition
+      @entities = MockEntities.new
     end
 
     def respond_to?(method, include_private = false)
-      method == :bounds || super
+      %i[bounds entities material name name=].include?(method) || super
     end
   end
 
@@ -209,13 +243,14 @@ module Sketchup
 end
 
 class MockComponentDefinition
-  attr_accessor :name, :instances, :bounds
+  attr_accessor :name, :instances, :bounds, :entities
 
   def initialize(name = 'Component', instance = nil)
     @name = name
     @instances = instance ? [instance] : []
     @attributes = {}
     @bounds = MockBounds.new
+    @entities = MockEntities.new
   end
 
   def set_attribute(dict, key, value)
@@ -225,6 +260,19 @@ class MockComponentDefinition
 
   def get_attribute(dict, key, default = nil)
     @attributes.dig(dict, key) || default
+  end
+end
+
+class MockAttributeDictionary
+  attr_reader :name
+
+  def initialize(name, values)
+    @name = name
+    @values = values
+  end
+
+  def each_pair(&)
+    @values.each_pair(&)
   end
 end
 
@@ -354,6 +402,44 @@ class MockMaterials
 
   def add_material(material)
     @materials << material
+  end
+end
+
+class MockPage
+  attr_accessor :name, :camera
+
+  def initialize(name: 'Scene 1', camera: MockCamera.new)
+    @name = name
+    @camera = camera
+  end
+end
+
+class MockPages
+  include Enumerable
+
+  attr_accessor :selected_page
+
+  def initialize
+    @pages = []
+    @selected_page = nil
+  end
+
+  def each(&)
+    @pages.each(&)
+  end
+
+  def map(&)
+    @pages.map(&)
+  end
+
+  def add(page)
+    @pages << page
+    @selected_page ||= page
+    page
+  end
+
+  def count
+    @pages.length
   end
 end
 
@@ -502,13 +588,14 @@ end
 
 class MockModel
   attr_accessor :title, :path, :entities, :selection, :layers, :materials, :active_view, :options, :bounds,
-                :active_path, :definitions
+                :active_path, :definitions, :pages
 
   def initialize(path: nil, title: 'Untitled')
     @path = path
     @title = title
     @entities = MockEntities.new
     @definitions = MockDefinitions.new
+    @pages = MockPages.new
     @selection = MockSelection.new
     @layers = MockLayers.new
     @materials = MockMaterials.new

@@ -574,6 +574,12 @@ module SupexRuntime
       when 'get_layers' then layers_info
       when 'get_materials' then materials_info
       when 'get_camera_info' then camera_info
+      when 'get_entity_tree' then entity_tree(args)
+      when 'find_entities' then find_entities(args)
+      when 'get_entity_details' then entity_details(args)
+      when 'list_scenes' then scenes_info
+      when 'set_camera' then apply_camera(args)
+      when 'validate_model' then validate_model(args)
       when 'take_screenshot' then take_screenshot(args, workspace: workspace)
       when 'take_batch_screenshots' then batch_screenshot(args, workspace: workspace)
       when 'open_model' then open_model(args, workspace: workspace)
@@ -635,7 +641,7 @@ module SupexRuntime
 
       # Propagate workspace to ENV so evaluated code can access it
       # (e.g., BatchScreenshot.execute reads ENV['SUPEX_WORKSPACE'] as fallback)
-      old_ws = ENV['SUPEX_WORKSPACE']
+      old_ws = ENV.fetch('SUPEX_WORKSPACE', nil)
       ENV['SUPEX_WORKSPACE'] = workspace if workspace
 
       begin

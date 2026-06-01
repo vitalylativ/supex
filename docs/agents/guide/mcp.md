@@ -34,6 +34,78 @@ Note: `reload_extension` is a CLI command (`./supex reload`), not an MCP tool.
 | `get_materials` | List materials |
 | `get_camera_info` | Current camera info |
 
+## Large-Model Navigation
+
+| Tool | Description |
+|------|-------------|
+| `get_entity_tree` | Bounded hierarchy of groups/components, optionally rooted at an entity |
+| `find_entities` | Search by text, type, name, tag/layer, material, or attribute |
+| `get_entity_details` | Detailed summary for one entity by entity id or persistent id |
+| `list_scenes` | List SketchUp scenes/pages with camera summaries |
+| `set_camera` | Set the active SketchUp camera from eye/target/up coordinates |
+| `validate_model` | Lightweight hygiene checks such as loose root geometry and empty containers |
+
+### get_entity_tree
+
+Inputs:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `root_id` | int/null | null | Optional entity id or persistent id to start from |
+| `id_type` | string | `entity_id` | `entity_id` or `persistent_id` |
+| `max_depth` | int | 3 | Maximum child depth |
+| `include_faces_edges` | bool | false | Include raw face/edge nodes instead of container-only tree |
+
+### find_entities
+
+Inputs:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | `""` | Free-text search over ids, type, name, definition, tag, material |
+| `entity_type` | string | `all` | `all`, `containers`, `faces`, `edges`, `groups`, `components`, or typename |
+| `name` | string/null | null | Name substring |
+| `tag` | string/null | null | Tag/layer substring |
+| `material` | string/null | null | Material substring |
+| `attribute_dict` | string/null | null | Attribute dictionary name |
+| `attribute_key` | string/null | null | Attribute key |
+| `attribute_value` | string/null | null | Exact attribute value |
+| `max_results` | int | 50 | Maximum results |
+| `max_depth` | int | 8 | Recursive search depth |
+
+### get_entity_details
+
+Inputs:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | int | required | Entity id or persistent id |
+| `id_type` | string | `entity_id` | `entity_id` or `persistent_id` |
+| `max_depth` | int | 1 | Child depth to include |
+| `include_faces_edges` | bool | false | Include raw face/edge children |
+
+### set_camera
+
+Inputs:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `eye` | list[float] | required | Camera eye point `[x, y, z]` in SketchUp internal units |
+| `target` | list[float] | required | Camera target point `[x, y, z]` |
+| `up` | list[float]/null | `[0,0,1]` | Camera up vector |
+| `fov` | float | 35.0 | Field of view |
+| `perspective` | bool | true | Perspective projection |
+| `zoom_extents` | bool | false | Zoom extents after setting camera |
+
+### validate_model
+
+Inputs:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | int/null | null | Optional scope entity id or persistent id |
+| `id_type` | string | `entity_id` | `entity_id` or `persistent_id` |
+
 ## Visualization
 
 | Tool | Description |

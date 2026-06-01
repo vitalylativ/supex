@@ -16,6 +16,7 @@ This directory is intended to be symlinked into user projects.
 - `README.md` - Router and quick workflow chooser
 - `ruby.md` - Full Ruby workflow rules and patterns
 - `vcad.md` - Full VCAD workflow rules and constraints
+- `large-projects.md` - Scoped editing, indexing, and transform protocol for large `.skp` files
 - `workflow.md` - Extended examples and visual QA for both workflows
 - `api/` - SketchUp Ruby API docs (symlink)
 - `stdlib/` - Ruby helper library docs (symlink)
@@ -44,6 +45,7 @@ For mixed tasks, use VCAD for authored geometry and Ruby for scene/model operati
 - Prefer file-based workflows (`.rb`, `.cmp.oo`, `.oo`) over long inline snippets.
 - For Ruby, prefer `eval_ruby_file` over `eval_ruby`.
 - Verify geometry visually after changes (`take_screenshot` or `take_batch_screenshots`).
+- For existing or large models, index and scope before editing (`get_entity_tree`, `find_entities`, `get_entity_details`).
 - Treat `mcp.md` as the canonical MCP tool inventory.
 - `reload_extension` is CLI-only (`./supex reload`), not an MCP tool.
 
@@ -53,6 +55,7 @@ For mixed tasks, use VCAD for authored geometry and Ruby for scene/model operati
 - VCAD authoring: `vcad_place`, `vcad_update`, `vcad_list_nodes`
 - VCAD batching: `vcad_watch_pause`, `vcad_watch_resume`
 - Introspection: `get_model_info`, `list_entities`, `get_selection`
+- Large-model navigation: `get_entity_tree`, `find_entities`, `get_entity_details`, `validate_model`
 - Visual QA: `take_screenshot`, `take_batch_screenshots`
 
 For signatures and complete list, see `mcp.md`.
@@ -61,4 +64,5 @@ For signatures and complete list, see `mcp.md`.
 
 - If using Ruby now: `ruby.md`
 - If using VCAD now: `vcad.md`
+- If editing an existing/large `.skp`: `large-projects.md`
 - If debugging geometry quality: `ruby.md` § "Geometry Quality Rules"

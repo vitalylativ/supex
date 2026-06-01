@@ -395,6 +395,162 @@ def get_camera_info(ctx: McpContext) -> str:
 
 
 @mcp.tool()
+def get_entity_tree(
+    ctx: McpContext,
+    root_id: int | None = None,
+    id_type: str = "entity_id",
+    max_depth: int = 3,
+    include_faces_edges: bool = False,
+) -> str:
+    """Get a bounded hierarchy of groups/components for large-model navigation.
+
+    Args:
+        root_id: Optional entity id or persistent id to start from
+        id_type: "entity_id" or "persistent_id" for root_id lookup
+        max_depth: Maximum child depth to include
+        include_faces_edges: Include raw Face/Edge nodes, not just containers
+    """
+    params: dict[str, Any] = {
+        "id_type": id_type,
+        "max_depth": max_depth,
+        "include_faces_edges": include_faces_edges,
+    }
+    if root_id is not None:
+        params["id"] = root_id
+    return call_tool(ctx, "get_entity_tree", params, "get_entity_tree")
+
+
+@mcp.tool()
+def find_entities(
+    ctx: McpContext,
+    query: str = "",
+    entity_type: str = "all",
+    name: str | None = None,
+    tag: str | None = None,
+    material: str | None = None,
+    attribute_dict: str | None = None,
+    attribute_key: str | None = None,
+    attribute_value: str | None = None,
+    max_results: int = 50,
+    max_depth: int = 8,
+) -> str:
+    """Search entities by text, type, tag/layer, material, or attribute.
+
+    Args:
+        query: Free-text search over ids, type, name, definition, tag, material
+        entity_type: all, containers, faces, edges, groups, components, or typename
+        name: Optional name substring
+        tag: Optional tag/layer substring
+        material: Optional material substring
+        attribute_dict: Optional attribute dictionary name
+        attribute_key: Optional attribute key
+        attribute_value: Optional exact attribute value
+        max_results: Maximum results to return
+        max_depth: Maximum recursive depth to inspect
+    """
+    params: dict[str, Any] = {
+        "query": query,
+        "entity_type": entity_type,
+        "max_results": max_results,
+        "max_depth": max_depth,
+    }
+    optional = {
+        "name": name,
+        "tag": tag,
+        "material": material,
+        "attribute_dict": attribute_dict,
+        "attribute_key": attribute_key,
+        "attribute_value": attribute_value,
+    }
+    params.update({key: value for key, value in optional.items() if value is not None})
+    return call_tool(ctx, "find_entities", params, "find_entities")
+
+
+@mcp.tool()
+def get_entity_details(
+    ctx: McpContext,
+    id: int,
+    id_type: str = "entity_id",
+    max_depth: int = 1,
+    include_faces_edges: bool = False,
+) -> str:
+    """Get details for one entity by entity id or persistent id.
+
+    Args:
+        id: Entity id or persistent id
+        id_type: "entity_id" or "persistent_id"
+        max_depth: Child depth to include
+        include_faces_edges: Include raw Face/Edge children
+    """
+    return call_tool(
+        ctx,
+        "get_entity_details",
+        {
+            "id": id,
+            "id_type": id_type,
+            "max_depth": max_depth,
+            "include_faces_edges": include_faces_edges,
+        },
+        "get_entity_details",
+    )
+
+
+@mcp.tool()
+def list_scenes(ctx: McpContext) -> str:
+    """List SketchUp scenes/pages with camera summaries."""
+    return call_tool(ctx, "list_scenes", {}, "list_scenes")
+
+
+@mcp.tool()
+def set_camera(
+    ctx: McpContext,
+    eye: list[float],
+    target: list[float],
+    up: list[float] | None = None,
+    fov: float = 35.0,
+    perspective: bool = True,
+    zoom_extents: bool = False,
+) -> str:
+    """Set the active SketchUp camera.
+
+    Args:
+        eye: Camera eye point [x, y, z] in SketchUp internal units
+        target: Camera target point [x, y, z] in SketchUp internal units
+        up: Optional up vector [x, y, z], defaults to [0, 0, 1]
+        fov: Field of view in degrees
+        perspective: Whether the camera uses perspective projection
+        zoom_extents: Whether to zoom extents after setting the camera
+    """
+    params: dict[str, Any] = {
+        "eye": eye,
+        "target": target,
+        "up": up or [0, 0, 1],
+        "fov": fov,
+        "perspective": perspective,
+        "zoom_extents": zoom_extents,
+    }
+    return call_tool(ctx, "set_camera", params, "set_camera")
+
+
+@mcp.tool()
+def validate_model(
+    ctx: McpContext,
+    id: int | None = None,
+    id_type: str = "entity_id",
+) -> str:
+    """Run lightweight model hygiene checks.
+
+    Args:
+        id: Optional scope entity id or persistent id
+        id_type: "entity_id" or "persistent_id" for id lookup
+    """
+    params: dict[str, Any] = {"id_type": id_type}
+    if id is not None:
+        params["id"] = id
+    return call_tool(ctx, "validate_model", params, "validate_model")
+
+
+@mcp.tool()
 def take_screenshot(
     ctx: McpContext,
     width: int = 1920,

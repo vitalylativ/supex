@@ -3,12 +3,39 @@
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from supex_driver.cli.output import get_output
+
+
+def _eval_result_text(result: dict) -> str:
+    content = result.get("content", [])
+    if isinstance(content, list) and content:
+        return str(content[0].get("text", ""))
+    return str(result.get("result", ""))
+
+
+def _active_model_path(conn) -> str:
+    result = conn.send_command("eval_ruby", {"code": "Sketchup.active_model.path"})
+    return _eval_result_text(result)
+
+
+def _wait_for_active_model_path(conn, expected_path: Path, timeout: float = 15.0) -> str:
+    expected = str(expected_path.resolve())
+    deadline = time.time() + timeout
+    last_path = ""
+
+    while time.time() < deadline:
+        last_path = _active_model_path(conn)
+        if last_path == expected:
+            return last_path
+        time.sleep(0.25)
+
+    return last_path
 
 
 def _setup_logging():
@@ -462,6 +489,10 @@ def open_model(
     try:
         conn = get_connection(host, port)
         conn.send_command("open_model", {"path": str(abs_path)})
+        active_path = _wait_for_active_model_path(conn, abs_path)
+        if active_path != str(abs_path):
+            out.error(f"Open did not switch active model. Active path: {active_path or '<unsaved>'}")
+            raise typer.Exit(1)
         out.success(f"Opened: {abs_path.name}")
     except Exception as e:
         handle_error(e)

@@ -17,6 +17,10 @@ Use Ruby for:
 3. Verify with introspection (`get_model_info`, `list_entities`) and screenshots.
 4. Iterate by editing the file and re-running.
 
+For existing or large models, read `large-projects.md` first. Use
+`get_entity_tree`, `find_entities`, and `get_entity_details` to choose a scope
+before writing edit scripts.
+
 ## Execution Rules
 
 - `eval_ruby_file(path)` - preferred for all non-trivial work (better line numbers and stack traces)
@@ -208,6 +212,9 @@ Materials on broken geometry are wasted effort.
 - **Tiny edges** - Edges < 1mm can cause issues. Use reasonable minimums
 - **Reversed faces** - Back faces (blue) showing means normals are wrong
 - **Stray edges** - Leftover edges break face creation. Clean up with `entities.grep(Sketchup::Edge)`
+- **Transform trial-and-error** - For mirror/copy/alignment tasks, derive source
+  and target coordinate frames before editing; use screenshots to confirm, not
+  to discover the transform.
 
 ## Snippets
 

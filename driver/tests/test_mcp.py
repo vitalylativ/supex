@@ -25,6 +25,12 @@ class TestMCPServer:
             "get_layers",
             "get_materials",
             "get_camera_info",
+            "get_entity_tree",
+            "find_entities",
+            "get_entity_details",
+            "list_scenes",
+            "set_camera",
+            "validate_model",
             "take_screenshot",
             # Model management
             "open_model",
