@@ -88,7 +88,7 @@ Common issues and solutions when using Supex.
 
 **Solutions**:
 1. Set `SUPEX_WORKSPACE` in your MCP client's environment configuration
-2. Add additional paths to `SUPEX_ALLOWED_ROOTS` (colon-separated)
+2. Add additional paths to `SUPEX_ALLOWED_ROOTS` (`:`-separated on macOS/Linux, `;`-separated on Windows)
 3. Use absolute paths within allowed directories
 4. Disable restrictions (not recommended): `SUPEX_ALLOWED_ROOTS=*`
 

@@ -8,7 +8,7 @@ Supex behavior is controlled primarily through environment variables.
 |----------|---------|-------------|
 | `SUPEX_AUTH_TOKEN` | (unset) | Shared token for Bridge + REPL authentication |
 | `SUPEX_ALLOW_REMOTE` | `0` | Allow non-loopback bind when set to `1` |
-| `SUPEX_ALLOWED_ROOTS` | (unset) | Colon-separated path allowlist for guarded file operations |
+| `SUPEX_ALLOWED_ROOTS` | (unset) | Path allowlist for guarded file operations, separated with the platform path separator (`:` on macOS/Linux, `;` on Windows) |
 | `SUPEX_WORKSPACE` | wrapper-dependent | Workspace root passed to runtime in `hello` handshake |
 
 Path policy is a guardrail, not a sandbox. Arbitrary Ruby execution can bypass it.
@@ -44,11 +44,12 @@ Workspace defaults differ by entrypoint script:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUPEX_SKETCHUP_APP` | `SketchUp` | App name or `.app` path passed to `open -a` |
-| `SUPEX_SKETCHUP_PROCESS` | `SketchUp` | Process name used by launcher readiness checks |
-| `SUPEX_SKETCHUP_TEMPLATE` | `tests/data/template.skp` | Template copied to `.tmp/sketchup-startup.skp` when no model is provided; set empty to disable |
+| `SUPEX_SKETCHUP_APP` | `SketchUp` | macOS app name or `.app` path passed to `open -a` |
+| `SUPEX_SKETCHUP_EXE` | auto-detected | Windows `SketchUp.exe` path used by `scripts/launch-sketchup.ps1` |
+| `SUPEX_SKETCHUP_PROCESS` | `SketchUp` | Process name used by macOS launcher readiness checks |
+| `SUPEX_SKETCHUP_TEMPLATE` | `tests/data/template.skp` | macOS template copied to `.tmp/sketchup-startup.skp` when no model is provided; set empty to disable |
 | `SUPEX_LAUNCH_PROCESS_TIMEOUT` | `30` | Seconds `scripts/launch-sketchup.sh` waits for the SketchUp process to appear |
-| `SUPEX_LAUNCH_READY_TIMEOUT` | `60` | Seconds `scripts/launch-sketchup.sh` waits for `./supex status` to succeed |
+| `SUPEX_LAUNCH_READY_TIMEOUT` | `60` | Seconds launch wrappers wait for `supex status` to succeed |
 
 ## REPL
 

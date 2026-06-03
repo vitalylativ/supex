@@ -84,11 +84,22 @@ end
 desc 'Install extension to SketchUp plugins directory'
 task install: :build do
   # Try to detect SketchUp plugins directory
-  possible_paths = [
-    File.expand_path('~/Library/Application Support/SketchUp 2026/SketchUp/Plugins'),
-    File.expand_path('~/Library/Application Support/SketchUp 2025/SketchUp/Plugins'),
-    File.expand_path('~/Library/Application Support/SketchUp 2024/SketchUp/Plugins')
-  ]
+  sketchup_years = %w[2026 2025 2024]
+  possible_paths = []
+
+  if ENV['APPDATA']
+    possible_paths.concat(
+      sketchup_years.map do |year|
+        File.join(ENV.fetch('APPDATA'), 'SketchUp', "SketchUp #{year}", 'SketchUp', 'Plugins')
+      end
+    )
+  end
+
+  possible_paths.concat(
+    sketchup_years.map do |year|
+      File.expand_path("~/Library/Application Support/SketchUp #{year}/SketchUp/Plugins")
+    end
+  )
 
   plugins_dir = possible_paths.find { |path| Dir.exist?(path) }
 

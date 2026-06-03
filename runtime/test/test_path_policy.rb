@@ -114,6 +114,14 @@ class TestPathPolicy < Minitest::Test
   # allowed_roots method tests
   # ==========================================================================
 
+  def test_allowed_roots_parser_uses_platform_path_separator
+    value = ['one', 'two'].join(File::PATH_SEPARATOR)
+
+    roots = SupexRuntime::PathPolicy.send(:parse_allowed_roots, value)
+
+    assert_equal %w[one two], roots
+  end
+
   def test_allowed_roots_returns_configured_roots
     Dir.mktmpdir('root1') do |root1|
       Dir.mktmpdir('root2') do |root2|
@@ -150,6 +158,10 @@ class TestPathPolicy < Minitest::Test
       assert_includes roots, File.realpath(allowed_dir)
       assert_equal 1, roots.length
     end
+  end
+
+  def test_path_within_allows_root_directory
+    assert SupexRuntime::PathPolicy.send(:path_within?, File.expand_path('/tmp'), File.expand_path('/'))
   end
 
   # ==========================================================================

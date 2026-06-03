@@ -14,6 +14,7 @@ from supex_driver.connection.vcad_connection import (
     VCADConnection,
     _parse_major_version,
 )
+from supex_driver.connection import vcad_sidecar as vcad_sidecar_module
 from supex_driver.connection.vcad_dag import VCADDag
 from supex_driver.connection.vcad_exceptions import (
     CAPABILITY_UNAVAILABLE,
@@ -1034,6 +1035,12 @@ class TestVCADConnectionSidecarLifecycle:
         with patch.dict(os.environ, {"SUPEX_VCAD_SIDECAR_PATH": "/env/path/binary"}):
             sidecar = VCADSidecar()
             assert sidecar.sidecar_path == "/env/path/binary"
+
+    def test_default_sidecar_relative_path_uses_windows_exe(self) -> None:
+        with patch.object(vcad_sidecar_module.os, "name", "nt"):
+            path = vcad_sidecar_module._default_sidecar_relative_path()
+
+        assert path.endswith(os.path.join("target", "release", "supex-vcad-sidecar.exe"))
 
     def test_ensure_running_no_binary(self) -> None:
         """ensure_running is a no-op when binary doesn't exist."""

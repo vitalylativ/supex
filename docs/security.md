@@ -59,8 +59,11 @@ File operations (`eval_ruby_file`, `open_model`, `save_model`, `take_screenshot`
 # Set workspace in MCP client env config (recommended)
 # SUPEX_WORKSPACE=/path/to/your/project
 
-# Add additional allowed paths (colon-separated)
 export SUPEX_ALLOWED_ROOTS=/path/one:/path/two
+```
+
+```powershell
+$env:SUPEX_ALLOWED_ROOTS = 'C:\path\one;D:\path\two'
 ```
 
 Note: `SUPEX_WORKSPACE` is set in your MCP client's environment configuration and passed to the runtime via the hello handshake. Default screenshot paths use `$SUPEX_WORKSPACE/.tmp/`.

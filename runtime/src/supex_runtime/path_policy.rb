@@ -5,8 +5,13 @@ module SupexRuntime
   # This is a guardrail to prevent accidental writes to wrong directories,
   # NOT a security boundary (arbitrary Ruby execution bypasses it).
   module PathPolicy
+    def self.parse_allowed_roots(value)
+      value.to_s.split(File::PATH_SEPARATOR).reject(&:empty?)
+    end
+    private_class_method :parse_allowed_roots
+
     # Environment configuration for additional allowed paths
-    ALLOWED_ROOTS = (ENV['SUPEX_ALLOWED_ROOTS'] || '').split(':').reject(&:empty?)
+    ALLOWED_ROOTS = parse_allowed_roots(ENV.fetch('SUPEX_ALLOWED_ROOTS', nil))
 
     # Exception raised when path access is denied
     class PathAccessDenied < StandardError; end
@@ -78,11 +83,16 @@ module SupexRuntime
       # @raise [PathAccessDenied] if no ancestor exists (e.g. broken root)
       def find_nearest_ancestor(path)
         current = File.dirname(path)
-        while current != '/'
+        loop do
           return current if File.exist?(current)
-          current = File.dirname(current)
+
+          parent = File.dirname(current)
+          break if parent == current
+
+          current = parent
         end
-        '/' # root always exists
+
+        raise PathAccessDenied, "Path denied: no existing ancestor for #{path}"
       end
 
       # Canonicalize the nearest existing ancestor of a path.
@@ -95,7 +105,22 @@ module SupexRuntime
       end
 
       def path_within?(path, root)
-        path.start_with?(root + File::SEPARATOR) || path == root
+        path = normalize_for_compare(path)
+        root = normalize_for_compare(root)
+        separator = windows_path? ? '/' : File::SEPARATOR
+        prefix = root.end_with?(separator) ? root : "#{root}#{separator}"
+
+        path.start_with?(prefix) || path == root
+      end
+
+      def normalize_for_compare(path)
+        return path unless windows_path?
+
+        path.tr('\\', '/').downcase.sub(%r{/+\z}, '')
+      end
+
+      def windows_path?
+        File::ALT_SEPARATOR == '\\'
       end
     end
   end

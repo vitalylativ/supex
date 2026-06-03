@@ -11,8 +11,8 @@ import time
 
 logger = logging.getLogger("supex.vcad.sidecar")
 
-# Default sidecar binary path (relative to supex root)
-_SIDECAR_RELATIVE_PATH = "vcad/sidecar/target/release/supex-vcad-sidecar"
+# Default sidecar binary location (relative to supex root)
+_SIDECAR_RELATIVE_DIR = os.path.join("vcad", "sidecar", "target", "release")
 
 # Readiness probe configuration
 _PROBE_RETRIES = 5
@@ -35,15 +35,25 @@ def _find_supex_root() -> str | None:
     return None
 
 
+def _sidecar_binary_name() -> str:
+    if os.name == "nt":
+        return "supex-vcad-sidecar.exe"
+    return "supex-vcad-sidecar"
+
+
+def _default_sidecar_relative_path() -> str:
+    return os.path.join(_SIDECAR_RELATIVE_DIR, _sidecar_binary_name())
+
+
 class VCADSidecar:
     """Manages VCAD sidecar Rust binary process lifecycle.
 
     The sidecar is a Rust TCP server that evaluates Loon code and produces
     VCAD IR documents, BRep geometry, and meshes.
 
-    The sidecar binary path defaults to
-    ``<supex_root>/vcad/sidecar/target/release/supex-vcad-sidecar``
-    and can be overridden with the ``VCAD_SIDECAR_PATH`` env var or
+    The sidecar binary path defaults to the release build under
+    ``<supex_root>/vcad/sidecar/target/release/`` (``.exe`` on Windows)
+    and can be overridden with the ``SUPEX_VCAD_SIDECAR_PATH`` env var or
     constructor argument.
     """
 
@@ -56,7 +66,7 @@ class VCADSidecar:
         if not self.sidecar_path:
             root = _find_supex_root()
             if root:
-                self.sidecar_path = os.path.join(root, _SIDECAR_RELATIVE_PATH)
+                self.sidecar_path = os.path.join(root, _default_sidecar_relative_path())
 
     def ensure_running(self) -> None:
         """Start sidecar if not running. Verify readiness via TCP probe.
