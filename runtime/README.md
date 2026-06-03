@@ -217,6 +217,23 @@ Change code and reload without restarting SketchUp:
 2. **MCP Tool**: Call `reload_extension()` via Python driver
 3. **Ruby Console**: `SupexRuntime::Main.reload_extension`
 
+### Development Loader
+
+Install the source-tree loader into SketchUp's Plugins directory:
+
+```bash
+../scripts/install-dev-extension.sh
+```
+
+On Windows PowerShell:
+
+```powershell
+..\scripts\install-dev-extension.ps1
+```
+
+The generated `supex_dev_loader.rb` points SketchUp at `runtime/src/injector.rb`
+in the current checkout. Remove it with `--uninstall` or `-Uninstall`.
+
 ### Debugging
 
 Console output is logged to `$SUPEX_WORKSPACE/.tmp/logs/runtime-console.log`:

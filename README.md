@@ -70,14 +70,54 @@ your-project/
 - **SketchUp 2026** - Download from [sketchup.com](https://www.sketchup.com)
   - Only the latest SketchUp version is tested
   - Project is experimental - no backward compatibility guarantees
-- **Claude Code** - AI-powered development environment from [claude.ai/code](https://claude.ai/code)
-  - Only tested with Claude Code (experimental project)
-  - Other MCP-compatible AI agents might work but are untested
-- **macOS** - Currently the primary supported platform
-- **Python 3.14+** - For the MCP driver (managed via UV)
-- **Ruby 3.2.2** - Same as the Ruby version bundled with SketchUp 2026
+- **Codex, Claude Code, or another MCP-compatible AI agent**
+- **Windows 11 or macOS**
+  - Windows support currently assumes you launch SketchUp manually
+- **uv** - Python is managed by uv; the Windows setup script can install it
+- **Ruby 3.2.2** - Bundled with SketchUp 2026, no separate install needed
 
-### 1. Clone the Repository
+### Windows Setup
+
+Clone or unpack this repository, then run the setup script from PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\setup-windows.ps1
+```
+
+The setup script:
+
+- Installs `uv` if it is missing
+- Checks that the Python driver starts
+- Installs a SketchUp dev loader into the current user's SketchUp Plugins folder
+- Prints the MCP command to use from Codex, Claude Code, or another MCP client
+
+After setup, launch SketchUp manually and open or create a model. Then verify:
+
+```powershell
+.\scripts\windows-smoke.ps1 -SkipLaunch
+```
+
+For a single assisted setup run, use:
+
+```powershell
+.\scripts\setup-windows.ps1 -Wait
+```
+
+With `-Wait`, the script installs everything, waits while you launch SketchUp
+manually, then runs the smoke check once the runtime is reachable.
+
+Configure your MCP client to run:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\path\to\supex\mcp.ps1
+```
+
+Replace `C:\path\to\supex` with this repository's path.
+
+### macOS Setup
+
+Clone the repository:
 
 ```bash
 git clone --recurse-submodules https://github.com/darwin/supex.git
@@ -90,7 +130,16 @@ Supex uses git submodules for vendored VCAD dependencies (`vcad/vendor/`). If yo
 git submodule update --init --recursive
 ```
 
-### 2. Launch SketchUp with Extension
+Install the development extension loader:
+
+```bash
+./scripts/install-dev-extension.sh
+```
+
+After restarting SketchUp, Supex starts automatically for normal SketchUp
+launches and opened `.skp` files.
+
+### Optional macOS Launcher
 
 The development launcher handles extension deployment automatically:
 
@@ -112,7 +161,7 @@ This script:
 - Opens a temporary copy of the startup template when no model is given, so automated launches avoid the welcome screen
 - In `--detach` mode, waits for `./supex status` to succeed before exiting
 
-### 3. Configure Claude Code
+### Configure Claude Code on macOS
 
 Add Supex MCP server to your project:
 
@@ -122,7 +171,7 @@ claude mcp add supex -- /path/to/supex/mcp
 
 Replace `/path/to/supex/mcp` with the actual path to your Supex installation.
 
-### 4. Verify Connection
+### Verify Connection
 
 ```bash
 ./supex status

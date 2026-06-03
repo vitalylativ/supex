@@ -38,10 +38,27 @@ function Invoke-Step {
 
 try {
     Invoke-Step "Check uv" { & uv --version }
-    Invoke-Step "Check driver" { & uv run --project (Join-Path $SupexRoot "driver") supex --help *> $null }
+    Invoke-Step "Check driver" {
+        $DriverProject = Join-Path $SupexRoot "driver"
+        & cmd.exe /c "uv run --project `"$DriverProject`" supex --help >NUL 2>NUL"
+    }
 
     if (-not $SkipLaunch) {
-        $LaunchArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $ScriptDir "launch-sketchup.ps1"), "-Detach")
+        Invoke-Step "Install dev extension loader" {
+            & $PowerShellExe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ScriptDir "install-dev-extension.ps1")
+        }
+
+        $StartupModel = Join-Path $SupexRoot "tests\data\template.skp"
+        $LaunchArgs = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            (Join-Path $ScriptDir "launch-sketchup.ps1"),
+            $StartupModel,
+            "-Detach",
+            "-UseInstalledExtension"
+        )
         if ($Restart) {
             $LaunchArgs += "-Restart"
         }
@@ -64,8 +81,12 @@ try {
         }
         $LogItems = @(Get-ChildItem -Path $env:SUPEX_LOG_DIR -Force -ErrorAction SilentlyContinue)
         if ($LogItems.Count -gt 0) {
-            Compress-Archive -Path (Join-Path $env:SUPEX_LOG_DIR "*") -DestinationPath $LogZip -Force
-            Write-Host "Logs archived to $LogZip"
+            try {
+                Compress-Archive -Path (Join-Path $env:SUPEX_LOG_DIR "*") -DestinationPath $LogZip -Force -ErrorAction Stop
+                Write-Host "Logs archived to $LogZip"
+            } catch {
+                Write-Warning "Could not archive logs: $($_.Exception.Message)"
+            }
         }
     }
 }

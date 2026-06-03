@@ -3,7 +3,8 @@ param(
     [string]$ModelPath,
     [switch]$Detach,
     [switch]$Restart,
-    [switch]$NoWaitReady
+    [switch]$NoWaitReady,
+    [switch]$UseInstalledExtension
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,9 +27,11 @@ function Resolve-SketchUpExe {
     $Candidates = @()
     foreach ($Year in @("2026", "2025", "2024")) {
         if ($env:ProgramFiles) {
+            $Candidates += (Join-Path $env:ProgramFiles "SketchUp\SketchUp $Year\SketchUp\SketchUp.exe")
             $Candidates += (Join-Path $env:ProgramFiles "SketchUp\SketchUp $Year\SketchUp.exe")
         }
         if (${env:ProgramFiles(x86)}) {
+            $Candidates += (Join-Path ${env:ProgramFiles(x86)} "SketchUp\SketchUp $Year\SketchUp\SketchUp.exe")
             $Candidates += (Join-Path ${env:ProgramFiles(x86)} "SketchUp\SketchUp $Year\SketchUp.exe")
         }
     }
@@ -119,7 +122,9 @@ if ($ModelPath) {
     $LaunchArgs += (Resolve-Path $ModelPath).Path
 }
 
-$LaunchArgs += @("-RubyStartup", $Injector)
+if (-not $UseInstalledExtension) {
+    $LaunchArgs += @("-RubyStartup", $Injector)
+}
 
 if ($Restart) {
     Stop-SketchUp
@@ -130,8 +135,22 @@ if ($Restart) {
 Write-Host "Launching SketchUp: $SketchUpExe"
 Write-Host "Workspace: $env:SUPEX_WORKSPACE"
 Write-Host "Logs: $env:SUPEX_LOG_DIR"
+if ($UseInstalledExtension) {
+    Write-Host "Runtime load: installed SketchUp extension"
+} else {
+    Write-Host "Runtime load: -RubyStartup $Injector"
+}
 
-[void](Start-Process -FilePath $SketchUpExe -ArgumentList (Join-SupexProcessArguments -Arguments $LaunchArgs) -PassThru)
+$StartProcessArgs = @{
+    FilePath = $SketchUpExe
+    PassThru = $true
+}
+$JoinedLaunchArgs = Join-SupexProcessArguments -Arguments $LaunchArgs
+if ($JoinedLaunchArgs) {
+    $StartProcessArgs.ArgumentList = $JoinedLaunchArgs
+}
+
+[void](Start-Process @StartProcessArgs)
 
 if (-not $NoWaitReady) {
     Wait-SupexRuntime
