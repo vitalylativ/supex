@@ -395,6 +395,117 @@ def get_camera_info(ctx: McpContext) -> str:
 
 
 @mcp.tool()
+def get_context_snapshot(
+    ctx: McpContext,
+    max_selection: int = 25,
+    max_validation_issues: int = 10,
+) -> str:
+    """Get a compact live SketchUp context snapshot before editing.
+
+    Returns model path/title/modified state, units and bounds, active edit path,
+    current selection summary and fingerprint, camera summary, tag visibility,
+    lightweight validation summary, and warnings.
+    """
+    return call_tool(
+        ctx,
+        "get_context_snapshot",
+        {
+            "max_selection": max_selection,
+            "max_validation_issues": max_validation_issues,
+        },
+        "get_context_snapshot",
+    )
+
+
+@mcp.tool()
+def snapshot_scope(
+    ctx: McpContext,
+    source: str = "selection",
+    entity_ids: list[int] | None = None,
+    persistent_ids: list[int] | None = None,
+    visibility: str = "visible_only",
+    skip_locked: bool = True,
+    include_faces_edges: bool = False,
+    max_depth: int = 1,
+    max_entities: int = 50,
+) -> str:
+    """Resolve a bounded working scope from selection or explicit ids.
+
+    Args:
+        source: "selection", "entity_ids", or "persistent_ids"
+        entity_ids: Entity ids when source is "entity_ids"
+        persistent_ids: Persistent ids when source is "persistent_ids"
+        visibility: "visible_only" by default, or "all" to include hidden items
+        skip_locked: Skip locked entities by default
+        include_faces_edges: Include raw Face/Edge entities when explicitly true
+        max_depth: Bounded child depth to include
+        max_entities: Maximum top-level scope entities to return
+    """
+    params: dict[str, Any] = {
+        "source": source,
+        "visibility": visibility,
+        "skip_locked": skip_locked,
+        "include_faces_edges": include_faces_edges,
+        "max_depth": max_depth,
+        "max_entities": max_entities,
+    }
+    if entity_ids is not None:
+        params["entity_ids"] = entity_ids
+    if persistent_ids is not None:
+        params["persistent_ids"] = persistent_ids
+    return call_tool(ctx, "snapshot_scope", params, "snapshot_scope")
+
+
+@mcp.tool()
+def verify_scope(
+    ctx: McpContext,
+    source: str = "selection",
+    entity_ids: list[int] | None = None,
+    persistent_ids: list[int] | None = None,
+    visibility: str = "visible_only",
+    skip_locked: bool = True,
+    include_faces_edges: bool = False,
+    max_depth: int = 1,
+    max_entities: int = 50,
+    include_screenshots: bool = True,
+    standard_scope_views: bool | list[str] = True,
+    output_dir: str | None = None,
+    base_name: str = "scope_verify",
+    width: int = 1920,
+    height: int = 1080,
+    transparent: bool = False,
+    restore_camera: bool = True,
+) -> str:
+    """Verify a resolved scope with snapshot, validation, and scoped proof views.
+
+    This is a convenience wrapper over snapshot_scope, scoped validation, and
+    take_batch_screenshots. It does not discover scope from screenshots.
+    """
+    params: dict[str, Any] = {
+        "source": source,
+        "visibility": visibility,
+        "skip_locked": skip_locked,
+        "include_faces_edges": include_faces_edges,
+        "max_depth": max_depth,
+        "max_entities": max_entities,
+        "include_screenshots": include_screenshots,
+        "standard_scope_views": standard_scope_views,
+        "base_name": base_name,
+        "width": width,
+        "height": height,
+        "transparent": transparent,
+        "restore_camera": restore_camera,
+    }
+    if entity_ids is not None:
+        params["entity_ids"] = entity_ids
+    if persistent_ids is not None:
+        params["persistent_ids"] = persistent_ids
+    if output_dir:
+        params["output_dir"] = output_dir
+    return call_tool(ctx, "verify_scope", params, "verify_scope")
+
+
+@mcp.tool()
 def get_entity_tree(
     ctx: McpContext,
     root_id: int | None = None,
@@ -587,13 +698,15 @@ def take_screenshot(
 @mcp.tool()
 def take_batch_screenshots(
     ctx: McpContext,
-    shots: list[dict[str, Any]],
+    shots: list[dict[str, Any]] | None = None,
     output_dir: str | None = None,
     base_name: str = "screenshot",
     width: int = 1920,
     height: int = 1080,
     transparent: bool = False,
     restore_camera: bool = True,
+    scope_entity_ids: list[int] | None = None,
+    standard_scope_views: bool | list[str] = False,
 ) -> str:
     """Take multiple screenshots with different camera positions in a single batch.
 
@@ -624,6 +737,9 @@ def take_batch_screenshots(
         height: Default height for all shots (default 1080)
         transparent: Use transparent background (default False)
         restore_camera: Restore original camera after batch (default True)
+        scope_entity_ids: Optional explicit scope entity ids for scoped proof views
+        standard_scope_views: When true, add scope_top, scope_front, and scope_iso.
+                              May also be a list containing top/front/iso.
 
     Returns:
         JSON with success status, output directory, and array of results for each shot.
@@ -643,7 +759,7 @@ def take_batch_screenshots(
         )
     """
     params: dict[str, Any] = {
-        "shots": shots,
+        "shots": shots or [],
         "base_name": base_name,
         "width": width,
         "height": height,
@@ -652,6 +768,10 @@ def take_batch_screenshots(
     }
     if output_dir:
         params["output_dir"] = output_dir
+    if scope_entity_ids:
+        params["scope_entity_ids"] = scope_entity_ids
+    if standard_scope_views:
+        params["standard_scope_views"] = standard_scope_views
     return call_tool(ctx, "take_batch_screenshots", params, "take_batch_screenshots")
 
 

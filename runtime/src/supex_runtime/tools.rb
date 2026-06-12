@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require 'digest'
 require 'fileutils'
+require 'json'
 require_relative 'utils'
 require_relative 'batch_screenshot'
 require_relative 'path_policy'
@@ -90,6 +92,152 @@ module SupexRuntime
     rescue StandardError => e
       log "Error getting camera info: #{e.message}"
       raise "Failed to get camera info: #{e.message}"
+    end
+
+    # Get a compact live-state snapshot for pre-edit grounding.
+    # @param params [Hash] optional bounds for reported selection/validation rows
+    # @return [Hash] current model, selection, camera, tag, and validation context
+    def context_snapshot(params)
+      model = Sketchup.active_model
+      return { success: false, error: 'No active model' } unless model
+
+      max_selection = [[int_param(params, 'max_selection', 25), 0].max, 100].min
+      max_validation = [[int_param(params, 'max_validation_issues', 10), 0].max, 50].min
+      selection = selection_snapshot(model, max_selection)
+      validation = lightweight_validation_summary(model, max_validation)
+      warnings = []
+      warnings.concat(selection.delete(:warnings))
+      warnings.concat(validation.delete(:warnings))
+      warnings.concat(active_path_warnings(model))
+
+      {
+        success: true,
+        contract_version: 1,
+        model: model_snapshot_summary(model),
+        active_path: active_path_summary(model),
+        selection: selection,
+        camera: camera_summary(model.active_view.camera),
+        tags: tag_visibility_summary(model.layers),
+        validation: validation,
+        warnings: warnings.uniq
+      }
+    rescue StandardError => e
+      log "Error getting context snapshot: #{e.message}"
+      raise "Failed to get context snapshot: #{e.message}"
+    end
+
+    # Resolve an explicit working scope from the selection or supplied ids.
+    # @param params [Hash] source, id, visibility, and depth parameters
+    # @return [Hash] bounded scope entities, skipped entities, and fingerprints
+    def snapshot_scope(params)
+      model = Sketchup.active_model
+      return { success: false, error: 'No active model' } unless model
+
+      source = (params['source'] || 'selection').to_s
+      unless %w[selection entity_ids persistent_ids].include?(source)
+        return { success: false, error: "Unsupported scope source: #{source}" }
+      end
+
+      max_depth = [[int_param(params, 'max_depth', 1), 0].max, 5].min
+      max_entities = [[int_param(params, 'max_entities', 50), 1].max, 200].min
+      include_faces_edges = truthy?(params['include_faces_edges'])
+      visibility = (params['visibility'] || 'visible_only').to_s
+      visible_only = visibility != 'all'
+      skip_locked = params.key?('skip_locked') ? truthy?(params['skip_locked']) : true
+
+      source_entities, skipped, warnings = resolve_scope_source(model, source, params)
+      selection_fingerprint = selection_fingerprint(model)
+
+      if source == 'selection' && source_entities.empty?
+        warnings << 'Selection is empty; scope was not expanded to the whole model.'
+        return {
+          success: true,
+          contract_version: 1,
+          source: source,
+          visibility: visibility,
+          include_faces_edges: include_faces_edges,
+          max_depth: max_depth,
+          count: 0,
+          entities: [],
+          skipped: skipped,
+          warnings: warnings.uniq,
+          selection_fingerprint: selection_fingerprint,
+          scope_fingerprint: fingerprint_for([])
+        }
+      end
+
+      entities = []
+      visited = {}
+      source_entities.each do |entity|
+        break if entities.length >= max_entities
+
+        next if duplicate_scope_entity?(entity, visited)
+
+        skip_reasons = scope_skip_reasons(entity, model, visible_only, skip_locked, include_faces_edges)
+        unless skip_reasons.empty?
+          skipped << skipped_scope_entity(entity, skip_reasons)
+          next
+        end
+
+        entities << build_scope_node(
+          entity, model, 0, max_depth, include_faces_edges,
+          visible_only: visible_only, skip_locked: skip_locked, skipped: skipped, visited: {}
+        )
+      end
+
+      warnings << 'Scope result was truncated by max_entities.' if source_entities.length > max_entities
+      warnings.concat(active_path_warnings(model))
+
+      {
+        success: true,
+        contract_version: 1,
+        source: source,
+        visibility: visibility,
+        include_faces_edges: include_faces_edges,
+        skip_locked: skip_locked,
+        max_depth: max_depth,
+        count: entities.length,
+        entities: entities,
+        skipped: skipped,
+        warnings: warnings.uniq,
+        selection_fingerprint: selection_fingerprint,
+        scope_fingerprint: fingerprint_for(entities.map { |entity| fingerprint_entity_payload(entity) })
+      }
+    rescue StandardError => e
+      log "Error snapshotting scope: #{e.message}"
+      raise "Failed to snapshot scope: #{e.message}"
+    end
+
+    # Verify a resolved scope with fresh scope data, validation, and proof views.
+    # @param params [Hash] scope and screenshot parameters
+    # @param workspace [String, nil] workspace path for screenshot output
+    # @return [Hash] verification bundle
+    def verify_scope(params, workspace: nil)
+      model = Sketchup.active_model
+      return { success: false, error: 'No active model' } unless model
+
+      scope = snapshot_scope(params)
+      return scope unless scope[:success]
+
+      scope_entity_ids = scope[:entities].map { |entity| entity[:entity_id] }.compact
+      validation = verify_scope_validation(scope_entity_ids)
+      screenshots = verify_scope_screenshots(params, scope_entity_ids, workspace)
+      warnings = []
+      warnings.concat(scope[:warnings] || [])
+      warnings << 'Scope is empty; screenshots were not captured.' if scope_entity_ids.empty?
+      warnings << screenshots[:error] if screenshots.is_a?(Hash) && screenshots[:success] == false
+
+      {
+        success: screenshots.nil? || screenshots[:success],
+        contract_version: 1,
+        scope: scope,
+        validation: validation,
+        screenshots: screenshots,
+        warnings: warnings.compact.uniq
+      }
+    rescue StandardError => e
+      log "Error verifying scope: #{e.message}"
+      raise "Failed to verify scope: #{e.message}"
     end
 
     # Get a bounded hierarchy of model entities for large-project navigation.
@@ -336,16 +484,413 @@ module SupexRuntime
       value == true || value.to_s.downcase == 'true' || value.to_s == '1'
     end
 
-    def build_model_info_response(model)
+    def model_snapshot_summary(model)
+      {
+        path: model.respond_to?(:path) ? model.path.to_s : nil,
+        title: model.title.to_s.empty? ? 'Untitled' : model.title,
+        modified: model.respond_to?(:modified?) ? model.modified? : nil,
+        units: model_units(model),
+        bounds: bounds_hash(model)
+      }
+    end
+
+    def model_units(model)
       units_options = model.options['UnitsOptions']
       length_unit = units_options['LengthUnit']
       units_map = { 0 => 'inches', 1 => 'feet', 2 => 'millimeters', 3 => 'centimeters',
                     4 => 'meters' }
+      units_map[length_unit] || 'unknown'
+    rescue StandardError
+      'unknown'
+    end
 
+    def selection_snapshot(model, max_selection)
+      entities = model.selection.to_a
+      reported = entities.first(max_selection)
+      warnings = []
+      warnings << 'Selection summary was truncated.' if entities.length > reported.length
+
+      {
+        count: entities.length,
+        fingerprint: fingerprint_for(entities.map { |entity| fingerprint_payload(entity) }),
+        truncated: entities.length > reported.length,
+        entities: reported.map { |entity| selection_summary_entity(entity, model) },
+        warnings: warnings
+      }
+    end
+
+    def selection_fingerprint(model)
+      fingerprint_for(model.selection.to_a.map { |entity| fingerprint_payload(entity) })
+    end
+
+    def selection_summary_entity(entity, model)
+      summary = compact_entity_summary(entity)
+      summary[:visibility] = effective_visibility(entity, model)
+      summary
+    end
+
+    def compact_entity_summary(entity)
+      {
+        entity_id: safe_call(entity, :entityID),
+        persistent_id: safe_call(entity, :persistent_id),
+        type: safe_call(entity, :typename),
+        name: entity_name(entity),
+        definition_name: definition_name(entity),
+        layer: layer_name(entity),
+        material: material_name(entity),
+        bounds: bounds_hash(entity),
+        hidden: boolean_or_nil(entity, :hidden?),
+        locked: boolean_or_nil(entity, :locked?),
+        valid: entity.respond_to?(:valid?) ? entity.valid? : nil
+      }
+    end
+
+    def active_path_summary(model)
+      entities = active_path_entities(model)
+      {
+        present: !entities.empty?,
+        entities: entities.map { |entity| compact_entity_summary(entity) }
+      }
+    end
+
+    def active_path_warnings(model)
+      return [] if active_path_entities(model).empty?
+
+      ['Active edit path is present; visibility outside the edited context is conservative.']
+    end
+
+    def active_path_entities(model)
+      path = safe_call(model, :active_path)
+      return [] if path.nil?
+      return path.to_a.compact if path.respond_to?(:to_a)
+      return path.path.compact if path.respond_to?(:path)
+
+      [safe_call(path, :leaf)].compact
+    rescue StandardError
+      []
+    end
+
+    def tag_visibility_summary(layers)
+      list = layers.respond_to?(:to_a) ? layers.to_a : layers.map { |layer| layer }
+      hidden = []
+      visible_count = 0
+
+      list.each do |layer|
+        if layer.respond_to?(:visible?) && !layer.visible?
+          hidden << {
+            name: layer.respond_to?(:name) ? layer.name : nil,
+            page_behavior: layer.respond_to?(:page_behavior) ? layer.page_behavior : nil
+          }
+        else
+          visible_count += 1
+        end
+      end
+
+      {
+        visible_count: visible_count,
+        hidden_count: hidden.length,
+        hidden: hidden.first(25),
+        hidden_truncated: hidden.length > 25
+      }
+    end
+
+    def lightweight_validation_summary(model, max_issues)
+      issues = []
+      warnings = []
+
+      model.entities.each do |entity|
+        break if issues.length >= max_issues
+        next unless raw_geometry?(entity)
+
+        issues << {
+          severity: 'warning',
+          code: 'LOOSE_ROOT_GEOMETRY',
+          message: 'Loose face/edge at model root',
+          entity: entity_reference(entity)
+        }
+      end
+
+      model.selection.each do |entity|
+        break if issues.length >= max_issues
+        next unless container_entity?(entity)
+        next unless empty_entities?(child_entities(entity))
+
+        issues << {
+          severity: 'warning',
+          code: 'EMPTY_SELECTED_CONTAINER',
+          message: 'Selected group/component has no child entities',
+          entity: entity_reference(entity)
+        }
+      end
+
+      warnings << 'Validation summary was truncated.' if issues.length >= max_issues
+
+      {
+        issue_count: issues.length,
+        summary: issues,
+        checked: 'root_loose_geometry_and_selected_containers',
+        truncated: issues.length >= max_issues,
+        warnings: warnings
+      }
+    end
+
+    def resolve_scope_source(model, source, params)
+      skipped = []
+      warnings = []
+
+      case source
+      when 'selection'
+        [model.selection.to_a, skipped, warnings]
+      when 'entity_ids'
+        [resolve_entities_by_ids(model, Array(params['entity_ids']), 'entity_id', skipped), skipped, warnings]
+      when 'persistent_ids'
+        [resolve_entities_by_ids(model, Array(params['persistent_ids']), 'persistent_id', skipped), skipped, warnings]
+      end
+    end
+
+    def resolve_entities_by_ids(model, ids, id_type, skipped)
+      ids.map do |id|
+        entity = find_entity(model, id, id_type)
+        unless entity
+          skipped << {
+            requested_id: id,
+            id_type: id_type,
+            reasons: ['not_found']
+          }
+        end
+        entity
+      end.compact
+    end
+
+    def duplicate_scope_entity?(entity, visited)
+      key = entity_visit_key(entity)
+      return true if visited[key]
+
+      visited[key] = true
+      false
+    end
+
+    def scope_skip_reasons(entity, model, visible_only, skip_locked, include_faces_edges)
+      reasons = []
+      reasons << 'invalid' if entity.respond_to?(:valid?) && !entity.valid?
+      reasons << 'raw_geometry_excluded' if !include_faces_edges && raw_geometry?(entity)
+      reasons << 'locked' if skip_locked && boolean_or_nil(entity, :locked?)
+
+      if visible_only
+        visibility = effective_visibility(entity, model)
+        reasons.concat(visibility[:reasons]) unless visibility[:visible]
+      end
+
+      reasons.uniq
+    end
+
+    def skipped_scope_entity(entity, reasons)
+      compact_entity_summary(entity).merge(reasons: reasons)
+    end
+
+    def build_scope_node(entity, model, depth, max_depth, include_faces_edges, visible_only:, skip_locked:, skipped:, visited:)
+      node = compact_entity_summary(entity)
+      node[:depth] = depth
+      node[:visibility] = effective_visibility(entity, model)
+      node[:child_summary] = entity_collection_summary(child_entities(entity))
+
+      key = entity_visit_key(entity)
+      return node if depth >= max_depth || visited[key]
+
+      visited[key] = true
+      children = child_entities(entity).to_a
+      child_nodes = []
+      children.each do |child|
+        next unless tree_entity?(child, include_faces_edges)
+
+        reasons = scope_skip_reasons(child, model, visible_only, skip_locked, include_faces_edges)
+        unless reasons.empty?
+          skipped << skipped_scope_entity(child, reasons)
+          next
+        end
+
+        child_nodes << build_scope_node(
+          child, model, depth + 1, max_depth, include_faces_edges,
+          visible_only: visible_only, skip_locked: skip_locked, skipped: skipped, visited: visited.dup
+        )
+      end
+      node[:children] = child_nodes unless child_nodes.empty?
+      node
+    end
+
+    def verify_scope_validation(scope_entity_ids)
+      results = scope_entity_ids.map do |entity_id|
+        validation = validate_model({ 'id' => entity_id, 'id_type' => 'entity_id' })
+        {
+          entity_id: entity_id,
+          issue_count: validation[:issue_count],
+          issues: validation[:issues]
+        }
+      end
+
+      {
+        scope_count: scope_entity_ids.length,
+        issue_count: results.sum { |result| result[:issue_count].to_i },
+        results: results
+      }
+    end
+
+    def verify_scope_screenshots(params, scope_entity_ids, workspace)
+      include_screenshots = params.key?('include_screenshots') ? truthy?(params['include_screenshots']) : true
+      return nil unless include_screenshots
+      return nil if scope_entity_ids.empty?
+
+      screenshot_params = {
+        'shots' => [],
+        'scope_entity_ids' => scope_entity_ids,
+        'standard_scope_views' => params.key?('standard_scope_views') ? params['standard_scope_views'] : true,
+        'base_name' => params['base_name'] || 'scope_verify',
+        'restore_camera' => params.key?('restore_camera') ? truthy?(params['restore_camera']) : true
+      }
+      %w[output_dir width height transparent].each do |key|
+        screenshot_params[key] = params[key] if params.key?(key)
+      end
+
+      batch_screenshot(screenshot_params, workspace: workspace)
+    end
+
+    def effective_visibility(entity, model)
+      reasons = []
+      warnings = []
+
+      reasons << 'entity_hidden' if boolean_or_nil(entity, :hidden?)
+      reasons << 'tag_hidden' if tag_hidden?(entity)
+
+      visibility_ancestors(entity, model).each do |ancestor|
+        reasons << 'ancestor_hidden' if boolean_or_nil(ancestor, :hidden?)
+        reasons << 'ancestor_tag_hidden' if tag_hidden?(ancestor)
+      end
+
+      if hidden_by_active_edit_context?(entity, model)
+        reasons << 'outside_active_edit_path'
+      elsif !active_path_entities(model).empty?
+        warnings << 'Active edit path relation was only partially checked.'
+      end
+
+      {
+        visible: reasons.empty?,
+        reasons: reasons.uniq,
+        warnings: warnings.uniq
+      }
+    end
+
+    def tag_hidden?(entity)
+      layer = safe_call(entity, :layer)
+      layer.respond_to?(:visible?) && !layer.visible?
+    rescue StandardError
+      false
+    end
+
+    def visibility_ancestors(entity, model)
+      ancestors = []
+      seen = {}
+      current = entity
+
+      loop do
+        ancestor = parent_visibility_entity(current)
+        break unless ancestor
+
+        key = entity_visit_key(ancestor)
+        break if seen[key]
+
+        ancestors << ancestor
+        seen[key] = true
+        current = ancestor
+      end
+
+      active_path_entities(model).each do |ancestor|
+        next if same_entity?(ancestor, entity)
+        next if ancestors.any? { |existing| same_entity?(existing, ancestor) }
+
+        ancestors << ancestor
+      end
+
+      ancestors
+    end
+
+    def parent_visibility_entity(entity)
+      parent = safe_call(entity, :parent)
+      return parent if parent && container_entity?(parent)
+
+      if defined?(Sketchup::ComponentDefinition) && parent.is_a?(Sketchup::ComponentDefinition)
+        instances = parent.respond_to?(:instances) ? parent.instances : []
+        return instances.first if instances.respond_to?(:length) && instances.length == 1
+      end
+
+      nil
+    rescue StandardError
+      nil
+    end
+
+    def hidden_by_active_edit_context?(entity, model)
+      active_path = active_path_entities(model)
+      return false if active_path.empty?
+      return false unless model.respond_to?(:rendering_options)
+      return false unless model.rendering_options['InactiveHidden']
+      return false if active_path.any? { |path_entity| same_entity?(path_entity, entity) }
+      return false unless root_level_entity?(entity, model)
+
+      true
+    rescue StandardError
+      false
+    end
+
+    def root_level_entity?(entity, model)
+      model.entities.to_a.any? { |root_entity| same_entity?(root_entity, entity) }
+    rescue StandardError
+      false
+    end
+
+    def same_entity?(left, right)
+      return true if left.equal?(right)
+
+      left_id = safe_call(left, :entityID)
+      right_id = safe_call(right, :entityID)
+      !left_id.nil? && left_id == right_id
+    end
+
+    def raw_geometry?(entity)
+      entity.is_a?(Sketchup::Face) || entity.is_a?(Sketchup::Edge)
+    end
+
+    def fingerprint_for(payload)
+      Digest::SHA256.hexdigest(JSON.generate(payload))[0, 16]
+    end
+
+    def fingerprint_payload(entity)
+      {
+        entity_id: safe_call(entity, :entityID),
+        persistent_id: safe_call(entity, :persistent_id),
+        type: safe_call(entity, :typename),
+        name: entity_name(entity),
+        definition_name: definition_name(entity),
+        layer: layer_name(entity),
+        bounds: bounds_hash(entity)
+      }
+    end
+
+    def fingerprint_entity_payload(scope_entity)
+      {
+        entity_id: scope_entity[:entity_id],
+        persistent_id: scope_entity[:persistent_id],
+        type: scope_entity[:type],
+        name: scope_entity[:name],
+        definition_name: scope_entity[:definition_name],
+        layer: scope_entity[:layer],
+        bounds: scope_entity[:bounds]
+      }
+    end
+
+    def build_model_info_response(model)
       {
         success: true,
         title: model.title.empty? ? 'Untitled' : model.title,
-        units: units_map[length_unit] || 'unknown',
+        units: model_units(model),
         num_faces: model.entities.grep(Sketchup::Face).count,
         num_edges: model.entities.grep(Sketchup::Edge).count,
         num_groups: model.entities.grep(Sketchup::Group).count,

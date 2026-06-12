@@ -331,6 +331,49 @@ class TestBatchScreenshot < Minitest::Test
     end
   end
 
+  def test_standard_scope_views_generate_scoped_batch_shots
+    group = Sketchup::Group.new(id: 12_346, name: 'Scoped Tower')
+    @mock_model.entities.add_entity(group)
+    original_eye = @mock_view.camera.eye.to_a
+
+    params = {
+      'shots' => [],
+      'scope_entity_ids' => [12_346],
+      'standard_scope_views' => true,
+      'output_dir' => @test_output_dir,
+      'base_name' => 'scoped'
+    }
+
+    result = SupexRuntime::BatchScreenshot.execute(params)
+
+    assert_equal true, result[:success]
+    assert_equal [12_346], result[:scope_entity_ids]
+    assert_equal 3, result[:total_shots]
+    assert_equal %w[scope_top scope_front scope_iso], result[:results].map { |shot| shot[:name] }
+    result[:results].each do |shot|
+      assert_equal [12_346], shot[:scope_entity_ids]
+      assert shot[:camera]
+      assert File.exist?(shot[:file_path])
+    end
+    assert_equal original_eye, @mock_view.camera.eye.to_a
+  end
+
+  def test_standard_scope_views_fail_when_scope_cannot_be_framed
+    params = {
+      'shots' => [],
+      'scope_entity_ids' => [987_654],
+      'standard_scope_views' => ['iso'],
+      'output_dir' => @test_output_dir,
+      'base_name' => 'missing_scope'
+    }
+
+    result = SupexRuntime::BatchScreenshot.execute(params)
+
+    assert_equal false, result[:success]
+    assert_equal 1, result[:failed]
+    assert_match(/No valid entities found/, result[:results].first[:error])
+  end
+
   # ==========================================================================
   # Batch Processing Tests
   # ==========================================================================

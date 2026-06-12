@@ -574,6 +574,9 @@ module SupexRuntime
       when 'get_layers' then layers_info
       when 'get_materials' then materials_info
       when 'get_camera_info' then camera_info
+      when 'get_context_snapshot' then context_snapshot(args)
+      when 'snapshot_scope' then snapshot_scope(args)
+      when 'verify_scope' then verify_scope(args, workspace: workspace)
       when 'get_entity_tree' then entity_tree(args)
       when 'find_entities' then find_entities(args)
       when 'get_entity_details' then entity_details(args)

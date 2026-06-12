@@ -135,13 +135,15 @@ end
 # Mock SketchUp entity classes
 module Sketchup
   class Entity
-    attr_accessor :entityID, :layer, :valid, :material
+    attr_accessor :entityID, :layer, :valid, :material, :hidden, :locked
 
     def initialize(id: rand(10_000))
       @entityID = id
       @layer = MockLayer.new
       @valid = true
       @material = nil
+      @hidden = false
+      @locked = false
       @attributes = {}
     end
 
@@ -155,6 +157,14 @@ module Sketchup
 
     def valid?
       @valid
+    end
+
+    def hidden?
+      @hidden
+    end
+
+    def locked?
+      @locked
     end
 
     def set_attribute(dict, key, value)
@@ -737,6 +747,34 @@ module Geom
 
     def initialize(point = nil)
       @origin = point || Point3d.new(0, 0, 0)
+    end
+  end
+
+  class BoundingBox < MockBounds
+    def initialize
+      @min = Point3d.new(1e30, 1e30, 1e30)
+      @max = Point3d.new(-1e30, -1e30, -1e30)
+      @empty = true
+      @center = Point3d.new
+    end
+
+    def add(point)
+      @empty = false
+      @min.x = [@min.x, point.x].min
+      @min.y = [@min.y, point.y].min
+      @min.z = [@min.z, point.z].min
+      @max.x = [@max.x, point.x].max
+      @max.y = [@max.y, point.y].max
+      @max.z = [@max.z, point.z].max
+      @center = Point3d.new(
+        (@min.x + @max.x) / 2.0,
+        (@min.y + @max.y) / 2.0,
+        (@min.z + @max.z) / 2.0
+      )
+    end
+
+    def empty?
+      @empty
     end
   end
 end

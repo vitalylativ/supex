@@ -49,7 +49,8 @@ module SupexRuntime
         model = Sketchup.active_model
         return { success: false, error: 'No active model' } unless model
 
-        shots = params['shots'] || []
+        scope_entity_ids = normalize_scope_entity_ids(params['scope_entity_ids'])
+        shots = expand_scope_shots(params['shots'] || [], scope_entity_ids, params['standard_scope_views'])
         return { success: false, error: 'No shots specified' } if shots.empty?
 
         view = model.active_view
@@ -68,7 +69,7 @@ module SupexRuntime
         # Restore original camera if requested (default: true)
         restore_camera_state(view, original_camera) if params['restore_camera'] != false
 
-        build_response(results, output_dir)
+        build_response(results, output_dir, scope_entity_ids)
       rescue PathPolicy::PathAccessDenied => e
         { success: false, error: e.message, error_code: 'PATH_NOT_ALLOWED' }
       rescue StandardError => e
@@ -76,6 +77,36 @@ module SupexRuntime
       end
 
       private
+
+      def normalize_scope_entity_ids(ids)
+        Array(ids).map { |id| id.to_i }.reject(&:zero?).uniq
+      end
+
+      def expand_scope_shots(shots, scope_entity_ids, standard_scope_views)
+        expanded = shots.dup
+        return expanded if scope_entity_ids.empty? || !standard_scope_views
+
+        scope_views = normalize_scope_views(standard_scope_views)
+        scope_views.each do |view_name|
+          expanded << {
+            'name' => "scope_#{view_name}",
+            'camera' => {
+              'type' => 'scope_standard_view',
+              'view' => view_name,
+              'entity_ids' => scope_entity_ids,
+              'padding' => 1.05
+            }
+          }
+        end
+        expanded
+      end
+
+      def normalize_scope_views(standard_scope_views)
+        requested = standard_scope_views == true ? %w[top front iso] : Array(standard_scope_views)
+        requested.map(&:to_s).map { |view| view.sub(/\Ascope_/, '') }
+                 .select { |view| %w[top front iso].include?(view) }
+                 .uniq
+      end
 
       # Process all shots within a single operation for UI suppression
       # @param model [Sketchup::Model] the model
@@ -133,7 +164,7 @@ module SupexRuntime
           end
 
           # Apply camera for this shot
-          apply_camera(view, model, camera_spec)
+          camera_warnings = apply_camera(view, model, camera_spec)
 
           # Generate filename and verify it stays within output_dir
           filename = "#{base_name}_#{shot_name}.png"
@@ -147,7 +178,15 @@ module SupexRuntime
           # Take screenshot (offscreen render due to explicit dimensions)
           write_screenshot(view, filepath, width, height, defaults[:transparent])
 
-          { success: true, file_path: filepath, name: shot_name }
+          result = {
+            success: true,
+            file_path: filepath,
+            name: shot_name,
+            camera: save_camera_state(view.camera)
+          }
+          result[:scope_entity_ids] = camera_spec['entity_ids'] if camera_spec['entity_ids']
+          result[:warnings] = camera_warnings unless camera_warnings.empty?
+          result
         rescue StandardError => e
           { success: false, name: shot_name, error: e.message }
         ensure
@@ -164,6 +203,7 @@ module SupexRuntime
       def apply_camera(view, model, camera_spec)
         type = camera_spec['type'] || 'standard_view'
         zoom = camera_spec['zoom_extents'] != false # Default true
+        warnings = []
 
         case type
         when 'standard_view'
@@ -171,14 +211,18 @@ module SupexRuntime
         when 'custom'
           apply_custom_camera(view, camera_spec)
         when 'zoom_entity'
-          apply_zoom_entity(view, model, camera_spec)
-          return # zoom_entity has its own zoom logic
+          warnings.concat(apply_zoom_entity(view, model, camera_spec))
+          return warnings # zoom_entity has its own zoom logic
+        when 'scope_standard_view'
+          warnings.concat(apply_scope_standard_view(view, model, camera_spec))
+          return warnings
         else
           raise "Unknown camera type: #{type}"
         end
 
         # Apply zoom_extents after setting camera direction
         view.zoom_extents if zoom
+        warnings
       end
 
       # Apply a standard view (top, front, iso, etc.)
@@ -186,11 +230,11 @@ module SupexRuntime
       # @param view [Sketchup::View] the view
       # @param model [Sketchup::Model] the model
       # @param view_name [String] name of the standard view
-      def apply_standard_view(view, model, view_name)
+      def apply_standard_view(view, model, view_name, bounds = nil)
         config = STANDARD_VIEWS[view_name.to_s.downcase]
         raise "Unknown standard view: #{view_name}" unless config
 
-        bounds = model.bounds
+        bounds ||= model.bounds
         center = bounds.empty? ? ORIGIN : bounds.center
 
         direction = Geom::Vector3d.new(*config[:direction]).normalize
@@ -202,6 +246,38 @@ module SupexRuntime
         camera = Sketchup::Camera.new(eye, center, up)
         camera.perspective = false # Standard views use parallel projection
         view.camera = camera
+      end
+
+      def resolve_camera_entities(model, entity_ids, camera_type)
+        raise "No entity_ids specified for #{camera_type}" if entity_ids.empty?
+
+        entities = []
+        missing_ids = []
+        entity_ids.each do |id|
+          entity = model.find_entity_by_id(id)
+          if entity
+            entities << entity
+          else
+            missing_ids << id
+          end
+        end
+
+        raise "No valid entities found for IDs: #{entity_ids}" if entities.empty?
+
+        [entities, missing_ids]
+      end
+
+      def combined_bounds(entities)
+        bounds = Geom::BoundingBox.new
+        entities.each do |entity|
+          entity_bounds = entity.respond_to?(:bounds) ? entity.bounds : nil
+          next unless entity_bounds
+          next if entity_bounds.respond_to?(:empty?) && entity_bounds.empty?
+
+          bounds.add(entity_bounds.min)
+          bounds.add(entity_bounds.max)
+        end
+        bounds
       end
 
       # Apply custom camera coordinates
@@ -237,11 +313,8 @@ module SupexRuntime
       # @param model [Sketchup::Model] the model
       # @param camera_spec [Hash] camera specification with entity_ids
       def apply_zoom_entity(view, model, camera_spec)
-        entity_ids = camera_spec['entity_ids'] || []
-        raise 'No entity_ids specified for zoom_entity' if entity_ids.empty?
-
-        entities = entity_ids.map { |id| model.find_entity_by_id(id) }.compact
-        raise "No valid entities found for IDs: #{entity_ids}" if entities.empty?
+        entity_ids = normalize_scope_entity_ids(camera_spec['entity_ids'])
+        entities, missing_ids = resolve_camera_entities(model, entity_ids, 'zoom_entity')
 
         # Zoom to the entities
         view.zoom(entities)
@@ -249,6 +322,27 @@ module SupexRuntime
         # Apply padding if specified
         padding = camera_spec['padding'] || 1.0
         apply_zoom_padding(view, padding) if padding != 1.0
+
+        missing_ids.empty? ? [] : ["Some scope entity ids were not found: #{missing_ids.join(', ')}"]
+      end
+
+      # Apply a named standard view and frame explicit scope entities.
+      # @param view [Sketchup::View] the view
+      # @param model [Sketchup::Model] the model
+      # @param camera_spec [Hash] camera specification with view and entity_ids
+      # @return [Array<String>] warnings
+      def apply_scope_standard_view(view, model, camera_spec)
+        entity_ids = normalize_scope_entity_ids(camera_spec['entity_ids'])
+        entities, missing_ids = resolve_camera_entities(model, entity_ids, 'scope_standard_view')
+
+        bounds = combined_bounds(entities)
+        apply_standard_view(view, model, camera_spec['view'], bounds)
+        view.zoom(entities)
+
+        padding = camera_spec['padding'] || 1.05
+        apply_zoom_padding(view, padding) if padding != 1.0
+
+        missing_ids.empty? ? [] : ["Some scope entity ids were not found: #{missing_ids.join(', ')}"]
       end
 
       # Apply zoom padding by adjusting camera distance
@@ -429,11 +523,11 @@ module SupexRuntime
       # @param results [Array<Hash>] results for each shot
       # @param output_dir [String] output directory path
       # @return [Hash] response
-      def build_response(results, output_dir)
+      def build_response(results, output_dir, scope_entity_ids = [])
         successful = results.count { |r| r[:success] }
         failed = results.count { |r| !r[:success] }
 
-        {
+        response = {
           success: failed.zero?,
           output_dir: output_dir,
           total_shots: results.length,
@@ -441,6 +535,8 @@ module SupexRuntime
           failed: failed,
           results: results
         }
+        response[:scope_entity_ids] = scope_entity_ids unless scope_entity_ids.empty?
+        response
       end
     end
   end
